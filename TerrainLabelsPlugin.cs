@@ -137,8 +137,9 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         for (var i = 0; i < _definitions.Count; i++)
         {
             var definition = _definitions[i];
+            var definitionName = string.IsNullOrWhiteSpace(definition.Label) ? "(unnamed label)" : definition.Label;
             ImGui.PushID(i);
-            if (ImGui.TreeNodeEx($"{definition.Label}##target", ImGuiTreeNodeFlags.DefaultOpen))
+            if (ImGui.TreeNodeEx($"{definitionName}##target"))
             {
                 var enabled = definition.Enabled;
                 var pattern = definition.Pattern;
