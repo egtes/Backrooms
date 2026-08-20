@@ -22,6 +22,8 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     private List<Match> _matches = [];
     private string _status = "Not scanned yet.";
     private bool _editorOpen = true;
+    private long _nextScanAt;
+    private string _lastAreaId = "";
 
     private string LabelsPath => Path.Combine(DirectoryFullName, "labels.json");
 
@@ -30,10 +32,39 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     public override bool Initialise()
     {
         LoadDefinitions();
+        // Initialise can run after the player has already entered an area, in which
+        // case ExileCore will not send this plugin the preceding AreaChange event.
+        _nextScanAt = 0;
         return true;
     }
 
-    public override void AreaChange(AreaInstance area) => ScanCurrentArea();
+    public override void AreaChange(AreaInstance area)
+    {
+        _lastAreaId = "";
+        _nextScanAt = 0;
+    }
+
+    public override Job Tick()
+    {
+        if (!GameController.Game.IsInGameState && !GameController.Game.IsEscapeState) return null!;
+
+        var now = Environment.TickCount64;
+        var areaId = GameController.Area.CurrentArea?.Area?.Id ?? "";
+        var areaChanged = !string.Equals(areaId, _lastAreaId, StringComparison.Ordinal);
+        if (areaChanged || now >= _nextScanAt)
+        {
+            _lastAreaId = areaId;
+            ScanCurrentArea();
+
+            // Retry empty scans because terrain tiles can become available a few
+            // frames after AreaChange. Once matches exist, a slower refresh still
+            // picks up late-loaded terrain without doing work every frame.
+            var hasMatches = false;
+            lock (_sync) hasMatches = _matches.Count != 0;
+            _nextScanAt = now + (hasMatches ? 10_000 : 1_000);
+        }
+        return null!;
+    }
 
     public override void Render()
     {
@@ -128,7 +159,8 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         {
             var enabled = _definitions.Where(x => x.Enabled && x.Matcher != null).ToList();
             var found = new List<Match>();
-            foreach (var tile in GameController.IngameState.Data.Tiles)
+            var tiles = GameController.IngameState.Data.Tiles.ToList();
+            foreach (var tile in tiles)
             {
                 var sources = new[] { tile.Name, tile.Path }
                     .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -146,7 +178,8 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
                 .DistinctBy(x => (x.Definition, x.GridPosition))
                 .ToList();
             lock (_sync) _matches = found;
-            _status = $"{found.Count} label location(s) found for {enabled.Count} enabled target(s).";
+            var matchedDefinitions = found.Select(x => x.Definition).Distinct().Count();
+            _status = $"Scanned {tiles.Count} terrain tiles: {found.Count} label location(s) found for {matchedDefinitions}/{enabled.Count} enabled target(s).";
         }
         catch (Exception ex)
         {
