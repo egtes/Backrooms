@@ -15,6 +15,7 @@ namespace TerrainLabels;
 
 public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettings>
 {
+    private static readonly int[] EmptyScanRetryDelaysMs = [500, 1_000, 2_000, 4_000];
     private sealed record Match(TerrainLabelDefinition Definition, Vector2i GridPosition, string Source);
 
     private readonly object _sync = new();
@@ -23,6 +24,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     private string _status = "Not scanned yet.";
     private bool _editorOpen = true;
     private long _nextScanAt;
+    private int _emptyScanRetryIndex;
     private string _lastAreaId = "";
 
     private string LabelsPath => Path.Combine(DirectoryFullName, "labels.json");
@@ -35,6 +37,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         // Initialise can run after the player has already entered an area, in which
         // case ExileCore will not send this plugin the preceding AreaChange event.
         _nextScanAt = 0;
+        _emptyScanRetryIndex = 0;
         return true;
     }
 
@@ -42,6 +45,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     {
         _lastAreaId = "";
         _nextScanAt = 0;
+        _emptyScanRetryIndex = 0;
     }
 
     public override Job Tick()
@@ -51,17 +55,32 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         var now = Environment.TickCount64;
         var areaId = GameController.Area.CurrentArea?.Area?.Id ?? "";
         var areaChanged = !string.Equals(areaId, _lastAreaId, StringComparison.Ordinal);
-        if (areaChanged || now >= _nextScanAt)
+        if (areaChanged)
         {
             _lastAreaId = areaId;
+            _nextScanAt = 0;
+            _emptyScanRetryIndex = 0;
+        }
+
+        if (now >= _nextScanAt)
+        {
             ScanCurrentArea();
 
-            // Retry empty scans because terrain tiles can become available a few
-            // frames after AreaChange. Once matches exist, a slower refresh still
-            // picks up late-loaded terrain without doing work every frame.
+            // Terrain tiles can become available a few frames after AreaChange.
+            // Retry a bounded number of times, then remain idle like Radar until
+            // the next area change, configuration edit, or manual rescan.
             var hasMatches = false;
             lock (_sync) hasMatches = _matches.Count != 0;
-            _nextScanAt = now + (hasMatches ? 10_000 : 1_000);
+            if (hasMatches || _emptyScanRetryIndex >= EmptyScanRetryDelaysMs.Length)
+            {
+                _nextScanAt = long.MaxValue;
+                if (!hasMatches)
+                    _status += " Automatic retries finished; use Rescan current area to try again.";
+            }
+            else
+            {
+                _nextScanAt = now + EmptyScanRetryDelaysMs[_emptyScanRetryIndex++];
+            }
         }
         return null!;
     }
