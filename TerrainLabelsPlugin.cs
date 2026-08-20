@@ -27,6 +27,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     private int _emptyScanRetryIndex;
     private string _lastAreaId = "";
     private int _lastScannedTileCount;
+    private int _lastScannedRoomCount;
     private DateTimeOffset? _lastScanTime;
 
     private string LabelsPath => Path.Combine(DirectoryFullName, "labels.json");
@@ -183,8 +184,11 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         {
             var enabled = _definitions.Where(x => x.Enabled && x.Matcher != null).ToList();
             var found = new List<Match>();
-            var tiles = GameController.IngameState.Data.Tiles.ToList();
+            var data = GameController.IngameState.Data;
+            var tiles = data.Tiles.ToList();
+            var rooms = data.AreaGraphs.SelectMany(x => x.Rooms).ToList();
             _lastScannedTileCount = tiles.Count;
+            _lastScannedRoomCount = rooms.Count;
             _lastScanTime = DateTimeOffset.Now;
             foreach (var tile in tiles)
             {
@@ -199,13 +203,28 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
                 }
             }
 
+            // Radar's "Show rooms" feature matches AreaGraphs room names rather
+            // than Data.Tiles. Room coordinates are tile units, so convert them
+            // to map-grid units and put the custom label at the room center.
+            foreach (var room in rooms)
+            {
+                if (string.IsNullOrWhiteSpace(room.Name)) continue;
+                foreach (var definition in enabled)
+                {
+                    if (!definition.Matcher!.IsMatch(room.Name)) continue;
+                    var centerX = (room.MinCoord.X + room.MaxCoord.X) * PoeMapExtension.TileToGridConversion / 2;
+                    var centerY = (room.MinCoord.Y + room.MaxCoord.Y) * PoeMapExtension.TileToGridConversion / 2;
+                    found.Add(new Match(definition, new Vector2i(centerX, centerY), room.Name));
+                }
+            }
+
             // Tile name and path can contain the same value. Keep only one label at a coordinate.
             found = found
                 .DistinctBy(x => (x.Definition, x.GridPosition))
                 .ToList();
             lock (_sync) _matches = found;
             var matchedDefinitions = found.Select(x => x.Definition).Distinct().Count();
-            _status = $"Scanned {tiles.Count} terrain tiles: {found.Count} label location(s) found for {matchedDefinitions}/{enabled.Count} enabled target(s).";
+            _status = $"Scanned {tiles.Count} terrain tiles and {rooms.Count} rooms: {found.Count} label location(s) found for {matchedDefinitions}/{enabled.Count} enabled target(s).";
             if (Settings.DebugMode)
                 DebugWindow.LogMsg($"[Terrain Labels] {_status}");
         }
@@ -226,6 +245,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         ImGui.TextUnformatted($"Area: {(_lastAreaId.Length == 0 ? "(not detected)" : _lastAreaId)}");
         ImGui.TextUnformatted($"Last scan: {(_lastScanTime?.ToString("T") ?? "never")}");
         ImGui.TextUnformatted($"Terrain tiles inspected: {_lastScannedTileCount}");
+        ImGui.TextUnformatted($"Rooms inspected: {_lastScannedRoomCount}");
         var retryText = _nextScanAt == long.MaxValue
             ? "idle until area change/manual scan"
             : $"retry {_emptyScanRetryIndex}/{EmptyScanRetryDelaysMs.Length} pending";
@@ -237,7 +257,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         if (!ImGui.TreeNode("Matched terrain sources")) return;
         if (snapshot.Count == 0)
         {
-            ImGui.TextDisabled("No terrain names or paths matched the configured patterns.");
+            ImGui.TextDisabled("No terrain tile names, paths, or room names matched the configured patterns.");
         }
         else
         {

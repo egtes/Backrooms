@@ -1,10 +1,11 @@
 # Terrain Labels
 
-An ExileCore plugin that finds terrain tile names/paths and puts configurable labels on the Path of Exile minimap.
+An ExileCore plugin that finds terrain tile names, paths, and Radar-style room names and puts configurable labels on the Path of Exile minimap.
 
 ## Features
 
 - Exact targets such as `Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/Marauder1.arm`.
+- Matches both terrain tiles and `AreaGraphs` rooms; room labels are placed at the room center.
 - Glob patterns such as `Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/*`.
 - `*` matches any text and `?` matches one character; matching is case-insensitive.
 - Any number of independent target definitions.
