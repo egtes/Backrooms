@@ -140,7 +140,10 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             var definition = _definitions[i];
             var definitionName = string.IsNullOrWhiteSpace(definition.Label) ? "(unnamed label)" : definition.Label;
             ImGui.PushID(i);
-            if (ImGui.TreeNodeEx($"{definitionName}##target"))
+            // ### keeps the widget ID stable while allowing the visible label name
+            // to change. Using ## here made ImGui forget the expanded state after
+            // every character typed into the Map label field.
+            if (ImGui.TreeNodeEx($"{definitionName}###target"))
             {
                 var enabled = definition.Enabled;
                 var pattern = definition.Pattern;
