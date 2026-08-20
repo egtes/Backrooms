@@ -240,15 +240,28 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         }
         else
         {
-            foreach (var match in snapshot.Take(100))
+            var shown = 0;
+            foreach (var group in snapshot.GroupBy(x => x.Definition))
             {
-                ImGui.BulletText($"{match.Definition.Label} @ {match.GridPosition.X}, {match.GridPosition.Y}");
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip(match.Source);
-                ImGui.SameLine();
-                ImGui.TextDisabled(match.Source);
+                var displayName = string.IsNullOrWhiteSpace(group.Key.Label) ? "(unnamed label)" : group.Key.Label;
+                ImGui.PushID(group.Key.GetHashCode());
+                if (ImGui.TreeNode($"{displayName} ({group.Count()})"))
+                {
+                    foreach (var match in group)
+                    {
+                        if (shown++ >= 100)
+                        {
+                            ImGui.TextDisabled($"...and {snapshot.Count - 100} more");
+                            break;
+                        }
+                        ImGui.BulletText($"Grid {match.GridPosition.X}, {match.GridPosition.Y}");
+                        ImGui.TextWrapped(match.Source);
+                    }
+                    ImGui.TreePop();
+                }
+                ImGui.PopID();
+                if (shown >= 100) break;
             }
-            if (snapshot.Count > 100)
-                ImGui.TextDisabled($"...and {snapshot.Count - 100} more");
         }
         ImGui.TreePop();
     }
