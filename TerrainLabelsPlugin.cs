@@ -26,6 +26,8 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     private long _nextScanAt;
     private int _emptyScanRetryIndex;
     private string _lastAreaId = "";
+    private int _lastScannedTileCount;
+    private DateTimeOffset? _lastScanTime;
 
     private string LabelsPath => Path.Combine(DirectoryFullName, "labels.json");
 
@@ -126,6 +128,8 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             SaveDefinitions();
         }
 
+        DrawDebugInformation();
+
         ImGui.Checkbox("Edit target labels", ref _editorOpen);
         if (!_editorOpen) return;
 
@@ -179,6 +183,8 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             var enabled = _definitions.Where(x => x.Enabled && x.Matcher != null).ToList();
             var found = new List<Match>();
             var tiles = GameController.IngameState.Data.Tiles.ToList();
+            _lastScannedTileCount = tiles.Count;
+            _lastScanTime = DateTimeOffset.Now;
             foreach (var tile in tiles)
             {
                 var sources = new[] { tile.Name, tile.Path }
@@ -199,6 +205,8 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             lock (_sync) _matches = found;
             var matchedDefinitions = found.Select(x => x.Definition).Distinct().Count();
             _status = $"Scanned {tiles.Count} terrain tiles: {found.Count} label location(s) found for {matchedDefinitions}/{enabled.Count} enabled target(s).";
+            if (Settings.DebugMode)
+                DebugWindow.LogMsg($"[Terrain Labels] {_status}");
         }
         catch (Exception ex)
         {
@@ -206,6 +214,43 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             _status = $"Scan failed: {ex.Message}";
             DebugWindow.LogError($"[Terrain Labels] {ex}");
         }
+    }
+
+    private void DrawDebugInformation()
+    {
+        if (!Settings.DebugMode) return;
+
+        ImGui.Separator();
+        ImGui.TextColored(new Vector4(.45f, .85f, 1f, 1f), "Terrain Labels debug");
+        ImGui.TextUnformatted($"Area: {(_lastAreaId.Length == 0 ? "(not detected)" : _lastAreaId)}");
+        ImGui.TextUnformatted($"Last scan: {(_lastScanTime?.ToString("T") ?? "never")}");
+        ImGui.TextUnformatted($"Terrain tiles inspected: {_lastScannedTileCount}");
+        var retryText = _nextScanAt == long.MaxValue
+            ? "idle until area change/manual scan"
+            : $"retry {_emptyScanRetryIndex}/{EmptyScanRetryDelaysMs.Length} pending";
+        ImGui.TextUnformatted($"Scanner: {retryText}");
+
+        List<Match> snapshot;
+        lock (_sync) snapshot = [.. _matches];
+        ImGui.TextUnformatted($"Cached label locations: {snapshot.Count}");
+        if (!ImGui.TreeNode("Matched terrain sources")) return;
+        if (snapshot.Count == 0)
+        {
+            ImGui.TextDisabled("No terrain names or paths matched the configured patterns.");
+        }
+        else
+        {
+            foreach (var match in snapshot.Take(100))
+            {
+                ImGui.BulletText($"{match.Definition.Label} @ {match.GridPosition.X}, {match.GridPosition.Y}");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(match.Source);
+                ImGui.SameLine();
+                ImGui.TextDisabled(match.Source);
+            }
+            if (snapshot.Count > 100)
+                ImGui.TextDisabled($"...and {snapshot.Count - 100} more");
+        }
+        ImGui.TreePop();
     }
 
     private void LoadDefinitions()

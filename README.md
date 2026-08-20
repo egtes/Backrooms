@@ -11,6 +11,8 @@ An ExileCore plugin that finds terrain tile names/paths and puts configurable la
 - Custom map label, text color, background color, enabled state, and padding.
 - Labels are rescanned when the area changes or when a definition is edited.
 - Settings are saved to `labels.json` in the installed plugin directory.
+- A manual **Rescan current area** button and debug mode expose scan counts,
+  retry state, matched terrain paths, and grid coordinates.
 
 ## Build
 
