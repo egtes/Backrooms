@@ -14,6 +14,9 @@ An ExileCore plugin that finds terrain tile names, paths, and Radar-style room n
 - Settings are saved to `labels.json` in the installed plugin directory.
 - A manual **Rescan current area** button and debug mode expose scan counts,
   retry state, matched terrain paths, and grid coordinates.
+- Debug mode includes a ten-row scrollable room browser with one-click creation
+  of exact room-label targets.
+- Each target's enabled checkbox is available directly on its collapsed header.
 
 ## Build
 

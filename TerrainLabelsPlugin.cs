@@ -28,6 +28,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     private string _lastAreaId = "";
     private int _lastScannedTileCount;
     private int _lastScannedRoomCount;
+    private List<string> _lastScannedRoomNames = [];
     private DateTimeOffset? _lastScanTime;
 
     private string LabelsPath => Path.Combine(DirectoryFullName, "labels.json");
@@ -140,24 +141,30 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             var definition = _definitions[i];
             var definitionName = string.IsNullOrWhiteSpace(definition.Label) ? "(unnamed label)" : definition.Label;
             ImGui.PushID(i);
+            var headerEnabled = definition.Enabled;
+            if (ImGui.Checkbox("##enabled", ref headerEnabled))
+            {
+                definition.Enabled = headerEnabled;
+                SaveDefinitions();
+                ScanCurrentArea();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(headerEnabled ? "Disable this label" : "Enable this label");
+            ImGui.SameLine();
             // ### keeps the widget ID stable while allowing the visible label name
             // to change. Using ## here made ImGui forget the expanded state after
             // every character typed into the Map label field.
             if (ImGui.TreeNodeEx($"{definitionName}###target"))
             {
-                var enabled = definition.Enabled;
                 var pattern = definition.Pattern;
                 var label = definition.Label;
                 var textColor = ToVector4(definition.TextColor, Vector4.One);
                 var backgroundColor = ToVector4(definition.BackgroundColor, new Vector4(0, 0, 0, .75f));
-                var changed = ImGui.Checkbox("Enabled", ref enabled);
-                changed |= ImGui.InputText("Target pattern", ref pattern, 512);
+                var changed = ImGui.InputText("Target pattern", ref pattern, 512);
                 changed |= ImGui.InputText("Map label", ref label, 128);
                 changed |= ImGui.ColorEdit4("Text color", ref textColor);
                 changed |= ImGui.ColorEdit4("Background color", ref backgroundColor);
                 if (changed)
                 {
-                    definition.Enabled = enabled;
                     definition.Pattern = pattern;
                     definition.Label = label;
                     definition.TextColor = FromVector4(textColor);
@@ -192,6 +199,12 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             var rooms = data.AreaGraphs.SelectMany(x => x.Rooms).ToList();
             _lastScannedTileCount = tiles.Count;
             _lastScannedRoomCount = rooms.Count;
+            _lastScannedRoomNames = rooms
+                .Select(x => x.Name)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList();
             _lastScanTime = DateTimeOffset.Now;
             foreach (var tile in tiles)
             {
@@ -257,6 +270,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         List<Match> snapshot;
         lock (_sync) snapshot = [.. _matches];
         ImGui.TextUnformatted($"Cached label locations: {snapshot.Count}");
+        DrawScannedRoomBrowser();
         if (!ImGui.TreeNode("Matched terrain sources")) return;
         if (snapshot.Count == 0)
         {
@@ -288,6 +302,48 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             }
         }
         ImGui.TreePop();
+    }
+
+    private void DrawScannedRoomBrowser()
+    {
+        if (!ImGui.TreeNode($"Scanned rooms ({_lastScannedRoomNames.Count})")) return;
+
+        var roomNames = _lastScannedRoomNames.ToArray();
+        var rowHeight = ImGui.GetTextLineHeightWithSpacing();
+        ImGui.BeginChild("scanned_rooms", new Vector2(0, rowHeight * 10f), ImGuiChildFlags.Border, ImGuiWindowFlags.HorizontalScrollbar);
+        for (var i = 0; i < roomNames.Length; i++)
+        {
+            var roomName = roomNames[i];
+            var alreadyAdded = _definitions.Any(x => string.Equals(x.Pattern, roomName, StringComparison.OrdinalIgnoreCase));
+            ImGui.PushID(i);
+            if (alreadyAdded)
+            {
+                ImGui.TextDisabled("Added");
+            }
+            else if (ImGui.SmallButton("Add"))
+            {
+                _definitions.Add(new TerrainLabelDefinition
+                {
+                    Pattern = roomName,
+                    Label = DefaultLabelForRoom(roomName),
+                });
+                CompileMatcher(_definitions[^1]);
+                SaveDefinitions();
+                ScanCurrentArea();
+            }
+            ImGui.SameLine();
+            ImGui.TextUnformatted(roomName);
+            ImGui.PopID();
+        }
+        ImGui.EndChild();
+        ImGui.TreePop();
+    }
+
+    private static string DefaultLabelForRoom(string roomName)
+    {
+        var lastSegment = roomName.Split('/').LastOrDefault() ?? roomName;
+        var extensionIndex = lastSegment.LastIndexOf('.');
+        return extensionIndex > 0 ? lastSegment[..extensionIndex] : lastSegment;
     }
 
     private void LoadDefinitions()
