@@ -30,6 +30,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     private int _lastScannedRoomCount;
     private List<string> _lastScannedRoomNames = [];
     private DateTimeOffset? _lastScanTime;
+    private int _roomBrowserTargetIndex;
 
     private string LabelsPath => Path.Combine(DirectoryFullName, "labels.json");
 
@@ -136,6 +137,8 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         if (!_editorOpen) return;
 
         var removeAt = -1;
+        var moveFrom = -1;
+        var moveTo = -1;
         for (var i = 0; i < _definitions.Count; i++)
         {
             var definition = _definitions[i];
@@ -150,28 +153,61 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             }
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(headerEnabled ? "Disable this label" : "Enable this label");
             ImGui.SameLine();
+            if (ImGui.SmallButton("Up") && i > 0) (moveFrom, moveTo) = (i, i - 1);
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Down") && i < _definitions.Count - 1) (moveFrom, moveTo) = (i, i + 1);
+            ImGui.SameLine();
             // ### keeps the widget ID stable while allowing the visible label name
             // to change. Using ## here made ImGui forget the expanded state after
             // every character typed into the Map label field.
             if (ImGui.TreeNodeEx($"{definitionName}###target"))
             {
-                var pattern = definition.Pattern;
                 var label = definition.Label;
                 var textColor = ToVector4(definition.TextColor, Vector4.One);
                 var backgroundColor = ToVector4(definition.BackgroundColor, new Vector4(0, 0, 0, .75f));
-                var changed = ImGui.InputText("Target pattern", ref pattern, 512);
-                changed |= ImGui.InputText("Map label", ref label, 128);
+                var changed = ImGui.InputText("Map label", ref label, 128);
                 changed |= ImGui.ColorEdit4("Text color", ref textColor);
                 changed |= ImGui.ColorEdit4("Background color", ref backgroundColor);
                 if (changed)
                 {
-                    definition.Pattern = pattern;
                     definition.Label = label;
                     definition.TextColor = FromVector4(textColor);
                     definition.BackgroundColor = FromVector4(backgroundColor);
                     CompileMatcher(definition);
                     SaveDefinitions();
                     ScanCurrentArea();
+                }
+
+                ImGui.SeparatorText("Room / terrain patterns");
+                var removePatternAt = -1;
+                for (var patternIndex = 0; patternIndex < definition.Patterns.Count; patternIndex++)
+                {
+                    ImGui.PushID(patternIndex);
+                    var pattern = definition.Patterns[patternIndex];
+                    ImGui.SetNextItemWidth(-70);
+                    if (ImGui.InputText("##pattern", ref pattern, 512))
+                    {
+                        definition.Patterns[patternIndex] = pattern;
+                        CompileMatcher(definition);
+                        SaveDefinitions();
+                        ScanCurrentArea();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton("Remove")) removePatternAt = patternIndex;
+                    ImGui.PopID();
+                }
+                if (removePatternAt >= 0)
+                {
+                    definition.Patterns.RemoveAt(removePatternAt);
+                    CompileMatcher(definition);
+                    SaveDefinitions();
+                    ScanCurrentArea();
+                }
+                if (ImGui.SmallButton("Add pattern"))
+                {
+                    definition.Patterns.Add("");
+                    CompileMatcher(definition);
+                    SaveDefinitions();
                 }
                 if (ImGui.Button("Remove")) removeAt = i;
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Remove this target definition.");
@@ -186,13 +222,18 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             SaveDefinitions();
             ScanCurrentArea();
         }
+        else if (moveFrom >= 0)
+        {
+            (_definitions[moveFrom], _definitions[moveTo]) = (_definitions[moveTo], _definitions[moveFrom]);
+            SaveDefinitions();
+        }
     }
 
     private void ScanCurrentArea()
     {
         try
         {
-            var enabled = _definitions.Where(x => x.Enabled && x.Matcher != null).ToList();
+            var enabled = _definitions.Where(x => x.Enabled && x.Matchers.Count != 0).ToList();
             var found = new List<Match>();
             var data = GameController.IngameState.Data;
             var tiles = data.Tiles.ToList();
@@ -214,7 +255,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
                 foreach (var source in sources)
                 foreach (var definition in enabled)
                 {
-                    if (definition.Matcher!.IsMatch(source))
+                    if (definition.Matchers.Any(matcher => matcher.IsMatch(source)))
                         found.Add(new Match(definition, tile.Coordinate, source));
                 }
             }
@@ -227,7 +268,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
                 if (string.IsNullOrWhiteSpace(room.Name)) continue;
                 foreach (var definition in enabled)
                 {
-                    if (!definition.Matcher!.IsMatch(room.Name)) continue;
+                    if (!definition.Matchers.Any(matcher => matcher.IsMatch(room.Name))) continue;
                     var centerX = (room.MinCoord.X + room.MaxCoord.X) * PoeMapExtension.TileToGridConversion / 2;
                     var centerY = (room.MinCoord.Y + room.MaxCoord.Y) * PoeMapExtension.TileToGridConversion / 2;
                     found.Add(new Match(definition, new Vector2i(centerX, centerY), room.Name));
@@ -308,13 +349,34 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
     {
         if (!ImGui.TreeNode($"Scanned rooms ({_lastScannedRoomNames.Count})")) return;
 
+        _roomBrowserTargetIndex = Math.Clamp(_roomBrowserTargetIndex, 0, Math.Max(0, _definitions.Count));
+        var destinationName = _roomBrowserTargetIndex < _definitions.Count
+            ? _definitions[_roomBrowserTargetIndex].Label
+            : "New label per room";
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##room_destination", $"Add rooms to: {destinationName}"))
+        {
+            for (var definitionIndex = 0; definitionIndex < _definitions.Count; definitionIndex++)
+            {
+                var name = string.IsNullOrWhiteSpace(_definitions[definitionIndex].Label)
+                    ? "(unnamed label)"
+                    : _definitions[definitionIndex].Label;
+                if (ImGui.Selectable($"{name}##destination_{definitionIndex}", _roomBrowserTargetIndex == definitionIndex))
+                    _roomBrowserTargetIndex = definitionIndex;
+            }
+            if (ImGui.Selectable("New label per room", _roomBrowserTargetIndex == _definitions.Count))
+                _roomBrowserTargetIndex = _definitions.Count;
+            ImGui.EndCombo();
+        }
+
         var roomNames = _lastScannedRoomNames.ToArray();
         var rowHeight = ImGui.GetTextLineHeightWithSpacing();
         ImGui.BeginChild("scanned_rooms", new Vector2(0, rowHeight * 10f), ImGuiChildFlags.Border, ImGuiWindowFlags.HorizontalScrollbar);
         for (var i = 0; i < roomNames.Length; i++)
         {
             var roomName = roomNames[i];
-            var alreadyAdded = _definitions.Any(x => string.Equals(x.Pattern, roomName, StringComparison.OrdinalIgnoreCase));
+            var destination = _roomBrowserTargetIndex < _definitions.Count ? _definitions[_roomBrowserTargetIndex] : null;
+            var alreadyAdded = destination?.Patterns.Any(x => string.Equals(x, roomName, StringComparison.OrdinalIgnoreCase)) == true;
             ImGui.PushID(i);
             if (alreadyAdded)
             {
@@ -322,12 +384,21 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             }
             else if (ImGui.SmallButton("Add"))
             {
-                _definitions.Add(new TerrainLabelDefinition
+                if (destination == null)
                 {
-                    Pattern = roomName,
-                    Label = DefaultLabelForRoom(roomName),
-                });
-                CompileMatcher(_definitions[^1]);
+                    destination = new TerrainLabelDefinition
+                    {
+                        Patterns = [roomName],
+                        Label = DefaultLabelForRoom(roomName),
+                    };
+                    _definitions.Add(destination);
+                    _roomBrowserTargetIndex = _definitions.Count;
+                }
+                else
+                {
+                    destination.Patterns.Add(roomName);
+                }
+                CompileMatcher(destination);
                 SaveDefinitions();
                 ScanCurrentArea();
             }
@@ -386,17 +457,21 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
 
     private static void CompileMatcher(TerrainLabelDefinition definition)
     {
-        try
+        definition.Matchers = [];
+        foreach (var pattern in definition.Patterns.Where(x => !string.IsNullOrWhiteSpace(x)))
         {
-            // Glob syntax: * matches any number of characters and ? matches one.
-            var regex = "^" + Regex.Escape(definition.Pattern.Trim())
-                .Replace("\\*", ".*")
-                .Replace("\\?", ".") + "$";
-            definition.Matcher = new Regex(regex, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-        }
-        catch
-        {
-            definition.Matcher = null;
+            try
+            {
+                // Glob syntax: * matches any number of characters and ? matches one.
+                var regex = "^" + Regex.Escape(pattern.Trim())
+                    .Replace("\\*", ".*")
+                    .Replace("\\?", ".") + "$";
+                definition.Matchers.Add(new Regex(regex, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled));
+            }
+            catch
+            {
+                // Ignore only the invalid pattern; other patterns remain usable.
+            }
         }
     }
 

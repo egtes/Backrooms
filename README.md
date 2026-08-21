@@ -9,6 +9,7 @@ An ExileCore plugin that finds terrain tile names, paths, and Radar-style room n
 - Glob patterns such as `Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/*`.
 - `*` matches any text and `?` matches one character; matching is case-insensitive.
 - Any number of independent target definitions.
+- Each label can contain multiple room or terrain patterns for easier grouping.
 - Custom map label, text color, background color, enabled state, and padding.
 - Labels are rescanned when the area changes or when a definition is edited.
 - Settings are saved to `labels.json` in the installed plugin directory.
@@ -17,6 +18,7 @@ An ExileCore plugin that finds terrain tile names, paths, and Radar-style room n
 - Debug mode includes a ten-row scrollable room browser with one-click creation
   of exact room-label targets.
 - Each target's enabled checkbox is available directly on its collapsed header.
+- Labels can be reordered with **Up** and **Down** controls.
 
 ## Build
 
@@ -33,7 +35,10 @@ Example `labels.json` entry:
 ```json
 {
   "Enabled": true,
-  "Pattern": "Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/Marauder1.arm",
+  "Patterns": [
+    "Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/Marauder1.arm",
+    "Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/Ranger2.arm"
+  ],
   "Label": "Marauder",
   "TextColor": [1.0, 0.85, 0.15, 1.0],
   "BackgroundColor": [0.0, 0.0, 0.0, 0.75]
