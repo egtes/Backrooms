@@ -1,4 +1,4 @@
-# Terrain Labels
+# Backrooms
 
 An ExileCore plugin that finds terrain tile names, paths, and Radar-style room names and puts configurable labels on the Path of Exile minimap.
 
@@ -25,10 +25,10 @@ An ExileCore plugin that finds terrain tile names, paths, and Radar-style room n
 ```powershell
 $env:exapiPackage = 'C:\path\to\ExileApi'
 $env:ExApiPluginOutputPath = 'C:\path\to\ExileApi\Plugins\Source\'
-dotnet build .\TerrainLabels.csproj -c Release
+dotnet build .\Backrooms.csproj -c Release
 ```
 
-The default target is the Mercenaries terrain-feature folder. Open **Terrain Labels** in ExileCore settings, rename the label or change its colors, and use **Add target** for more definitions.
+The default target is the Mercenaries terrain-feature folder. Open **Backrooms** in ExileCore settings, rename the label or change its colors, and use **Add target** for more definitions.
 
 Example `labels.json` entry:
 

@@ -11,15 +11,15 @@ using Color = SharpDX.Color;
 using Vector2 = System.Numerics.Vector2;
 using Vector4 = System.Numerics.Vector4;
 
-namespace TerrainLabels;
+namespace Backrooms;
 
-public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettings>
+public sealed class BackroomsPlugin : BaseSettingsPlugin<BackroomsSettings>
 {
     private static readonly int[] EmptyScanRetryDelaysMs = [500, 1_000, 2_000, 4_000];
-    private sealed record Match(TerrainLabelDefinition Definition, Vector2i GridPosition, string Source);
+    private sealed record Match(BackroomsLabelDefinition Definition, Vector2i GridPosition, string Source);
 
     private readonly object _sync = new();
-    private List<TerrainLabelDefinition> _definitions = [];
+    private List<BackroomsLabelDefinition> _definitions = [];
     private List<Match> _matches = [];
     private string _status = "Not scanned yet.";
     private bool _editorOpen = true;
@@ -34,7 +34,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
 
     private string LabelsPath => Path.Combine(DirectoryFullName, "labels.json");
 
-    public TerrainLabelsPlugin() => Name = "Terrain Labels";
+    public BackroomsPlugin() => Name = "Backrooms";
 
     public override bool Initialise()
     {
@@ -127,7 +127,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         ImGui.SameLine();
         if (ImGui.Button("Add target"))
         {
-            _definitions.Add(new TerrainLabelDefinition());
+            _definitions.Add(new BackroomsLabelDefinition());
             SaveDefinitions();
         }
 
@@ -283,13 +283,13 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             var matchedDefinitions = found.Select(x => x.Definition).Distinct().Count();
             _status = $"Scanned {tiles.Count} terrain tiles and {rooms.Count} rooms: {found.Count} label location(s) found for {matchedDefinitions}/{enabled.Count} enabled target(s).";
             if (Settings.DebugMode)
-                DebugWindow.LogMsg($"[Terrain Labels] {_status}");
+                DebugWindow.LogMsg($"[Backrooms] {_status}");
         }
         catch (Exception ex)
         {
             lock (_sync) _matches = [];
             _status = $"Scan failed: {ex.Message}";
-            DebugWindow.LogError($"[Terrain Labels] {ex}");
+            DebugWindow.LogError($"[Backrooms] {ex}");
         }
     }
 
@@ -298,7 +298,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         if (!Settings.DebugMode) return;
 
         ImGui.Separator();
-        ImGui.TextColored(new Vector4(.45f, .85f, 1f, 1f), "Terrain Labels debug");
+        ImGui.TextColored(new Vector4(.45f, .85f, 1f, 1f), "Backrooms debug");
         ImGui.TextUnformatted($"Area: {(_lastAreaId.Length == 0 ? "(not detected)" : _lastAreaId)}");
         ImGui.TextUnformatted($"Last scan: {(_lastScanTime?.ToString("T") ?? "never")}");
         ImGui.TextUnformatted($"Terrain tiles inspected: {_lastScannedTileCount}");
@@ -371,7 +371,9 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
 
         var roomNames = _lastScannedRoomNames.ToArray();
         var rowHeight = ImGui.GetTextLineHeightWithSpacing();
-        ImGui.BeginChild("scanned_rooms", new Vector2(0, rowHeight * 10f), ImGuiChildFlags.Border, ImGuiWindowFlags.HorizontalScrollbar);
+        // Value 1 is the border flag in both the older Border and newer Borders
+        // ImGui.NET enum spellings used by supported ExileCore builds.
+        ImGui.BeginChild("scanned_rooms", new Vector2(0, rowHeight * 10f), (ImGuiChildFlags)1, ImGuiWindowFlags.HorizontalScrollbar);
         for (var i = 0; i < roomNames.Length; i++)
         {
             var roomName = roomNames[i];
@@ -386,7 +388,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
             {
                 if (destination == null)
                 {
-                    destination = new TerrainLabelDefinition
+                    destination = new BackroomsLabelDefinition
                     {
                         Patterns = [roomName],
                         Label = DefaultLabelForRoom(roomName),
@@ -423,12 +425,12 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         {
             if (!File.Exists(LabelsPath))
             {
-                _definitions = [new TerrainLabelDefinition()];
+                _definitions = [new BackroomsLabelDefinition()];
                 SaveDefinitions();
             }
             else
             {
-                _definitions = JsonConvert.DeserializeObject<List<TerrainLabelDefinition>>(File.ReadAllText(LabelsPath)) ?? [];
+                _definitions = JsonConvert.DeserializeObject<List<BackroomsLabelDefinition>>(File.ReadAllText(LabelsPath)) ?? [];
             }
             foreach (var definition in _definitions) CompileMatcher(definition);
             _status = $"Loaded {_definitions.Count} target definition(s).";
@@ -437,7 +439,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         {
             _definitions = [];
             _status = $"Could not load labels.json: {ex.Message}";
-            DebugWindow.LogError($"[Terrain Labels] {ex}");
+            DebugWindow.LogError($"[Backrooms] {ex}");
         }
     }
 
@@ -451,11 +453,11 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         catch (Exception ex)
         {
             _status = $"Could not save labels.json: {ex.Message}";
-            DebugWindow.LogError($"[Terrain Labels] {ex}");
+            DebugWindow.LogError($"[Backrooms] {ex}");
         }
     }
 
-    private static void CompileMatcher(TerrainLabelDefinition definition)
+    private static void CompileMatcher(BackroomsLabelDefinition definition)
     {
         definition.Matchers = [];
         foreach (var pattern in definition.Patterns.Where(x => !string.IsNullOrWhiteSpace(x)))
@@ -489,7 +491,7 @@ public sealed class TerrainLabelsPlugin : BaseSettingsPlugin<TerrainLabelsSettin
         return playerScreen + data.TranslateGridDeltaToMapDelta(subMap, gridPosition - playerGrid, deltaZ);
     }
 
-    private void DrawLabel(string label, Vector2 center, TerrainLabelDefinition definition)
+    private void DrawLabel(string label, Vector2 center, BackroomsLabelDefinition definition)
     {
         if (string.IsNullOrWhiteSpace(label)) return;
         var textColor = ToColor(definition.TextColor, new Color(255, 255, 255, 255));

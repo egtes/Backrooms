@@ -1,9 +1,9 @@
 using ExileCore.Shared.Interfaces;
 using ExileCore.Shared.Nodes;
 
-namespace TerrainLabels;
+namespace Backrooms;
 
-public sealed class TerrainLabelsSettings : ISettings
+public sealed class BackroomsSettings : ISettings
 {
     public ToggleNode Enable { get; set; } = new(true);
     public ToggleNode ShowOnSmallMap { get; set; } = new(true);

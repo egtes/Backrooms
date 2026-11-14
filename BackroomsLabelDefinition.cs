@@ -1,8 +1,8 @@
 using Newtonsoft.Json;
 
-namespace TerrainLabels;
+namespace Backrooms;
 
-public sealed class TerrainLabelDefinition
+public sealed class BackroomsLabelDefinition
 {
     public bool Enabled { get; set; } = true;
     public List<string> Patterns { get; set; } = ["Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/*"];
