@@ -178,7 +178,8 @@ public sealed class BackroomsPlugin : BaseSettingsPlugin<BackroomsSettings>
                     ScanCurrentArea();
                 }
 
-                ImGui.SeparatorText("Room / terrain patterns");
+                ImGui.SeparatorText("Partial / wildcard / regex patterns");
+                ImGui.TextDisabled("Plain text matches partially; use * or ?, or prefix raw regex with regex:");
                 var removePatternAt = -1;
                 for (var patternIndex = 0; patternIndex < definition.Patterns.Count; patternIndex++)
                 {
@@ -464,10 +465,23 @@ public sealed class BackroomsPlugin : BaseSettingsPlugin<BackroomsSettings>
         {
             try
             {
-                // Glob syntax: * matches any number of characters and ? matches one.
-                var regex = "^" + Regex.Escape(pattern.Trim())
-                    .Replace("\\*", ".*")
-                    .Replace("\\?", ".") + "$";
+                var trimmed = pattern.Trim();
+                string regex;
+                if (trimmed.StartsWith("regex:", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Explicit raw regular expression. It is intentionally not
+                    // anchored, matching Radar's partial Regex.IsMatch behavior.
+                    regex = trimmed["regex:".Length..];
+                    if (string.IsNullOrWhiteSpace(regex)) continue;
+                }
+                else
+                {
+                    // Plain values are partial matches. Escaped * and ? are then
+                    // promoted to glob wildcards for convenient path matching.
+                    regex = Regex.Escape(trimmed)
+                        .Replace("\\*", ".*")
+                        .Replace("\\?", ".");
+                }
                 definition.Matchers.Add(new Regex(regex, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled));
             }
             catch
