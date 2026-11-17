@@ -4,8 +4,11 @@ namespace Backrooms;
 
 public sealed class BackroomsLabelDefinition
 {
+    public const string DefaultPattern = "Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/*";
+
     public bool Enabled { get; set; } = true;
-    public List<string> Patterns { get; set; } = ["Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/*"];
+    [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+    public List<string> Patterns { get; set; } = [DefaultPattern];
     public string Label { get; set; } = "Mercenary";
 
     // Read old labels.json files without making users recreate their targets.

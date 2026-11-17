@@ -8,6 +8,8 @@ An ExileCore plugin that finds terrain tile names, paths, and Radar-style room n
 - Matches both terrain tiles and `AreaGraphs` rooms; room labels are placed at the room center.
 - Glob patterns such as `Metadata/Terrain/Leagues/Mercenaries/TerrainFeatures/*`.
 - `*` matches any text and `?` matches one character.
+- A backslash before a wildcard is optional; both `*secret.arm` and
+  `\*secret.arm` are accepted as wildcard patterns.
 - Raw case-insensitive regular expressions use the `regex:` prefix, such as
   `regex:TerrainFeatures/(Ranger|Marauder)[0-9]+\.arm$`.
 - Any number of independent target definitions.

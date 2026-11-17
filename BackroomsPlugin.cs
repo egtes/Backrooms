@@ -433,7 +433,9 @@ public sealed class BackroomsPlugin : BaseSettingsPlugin<BackroomsSettings>
             {
                 _definitions = JsonConvert.DeserializeObject<List<BackroomsLabelDefinition>>(File.ReadAllText(LabelsPath)) ?? [];
             }
+            var normalized = NormalizeDefinitions();
             foreach (var definition in _definitions) CompileMatcher(definition);
+            if (normalized) SaveDefinitions();
             _status = $"Loaded {_definitions.Count} target definition(s).";
         }
         catch (Exception ex)
@@ -458,6 +460,33 @@ public sealed class BackroomsPlugin : BaseSettingsPlugin<BackroomsSettings>
         }
     }
 
+    private bool NormalizeDefinitions()
+    {
+        var changed = false;
+        foreach (var definition in _definitions)
+        {
+            var original = definition.Patterns ?? [];
+            var cleaned = original
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Older builds populated the default pattern into every deserialized
+            // list. If a label also has specific patterns, the broad default was
+            // injected rather than intentional (and makes those specifics moot).
+            if (cleaned.Count > 1)
+                cleaned.RemoveAll(x => string.Equals(x, BackroomsLabelDefinition.DefaultPattern, StringComparison.OrdinalIgnoreCase));
+
+            if (!original.SequenceEqual(cleaned, StringComparer.Ordinal))
+            {
+                definition.Patterns = cleaned;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     private static void CompileMatcher(BackroomsLabelDefinition definition)
     {
         definition.Matchers = [];
@@ -478,7 +507,10 @@ public sealed class BackroomsPlugin : BaseSettingsPlugin<BackroomsSettings>
                 {
                     // Plain values are partial matches. Escaped * and ? are then
                     // promoted to glob wildcards for convenient path matching.
-                    regex = Regex.Escape(trimmed)
+                    // Accept \* and \? too, since users often paste regex-style
+                    // escaped wildcards into this field.
+                    var glob = trimmed.Replace("\\*", "*").Replace("\\?", "?");
+                    regex = Regex.Escape(glob)
                         .Replace("\\*", ".*")
                         .Replace("\\?", ".");
                 }
